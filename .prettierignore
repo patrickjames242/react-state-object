@@ -1,0 +1,5 @@
+/vendor
+/storage
+/public/build
+/node_modules
+/dist

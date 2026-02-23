@@ -1,0 +1,68 @@
+{
+  "name": "react-state-object",
+  "version": "0.1.0",
+  "description": "MobX-friendly React state object lifecycle and hook decorators with class-instance injection.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit --watch",
+    "lint": "eslint ./src --ext .ts,.tsx",
+    "lint:fix": "eslint ./src --ext .ts,.tsx --fix",
+    "format": "prettier --write ./**/*.{js,jsx,ts,tsx,json,md}",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": [
+      "eslint --fix --max-warnings=0",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
+  },
+  "peerDependencies": {
+    "mobx": ">=6.0.0 <7",
+    "react": ">=18"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.3",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-unused-imports": "^4.2.0",
+    "mobx": "^6.15.0",
+    "prettier": "^3.3.3",
+    "prettier-plugin-organize-imports": "^4.3.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.5.4"
+  },
+  "keywords": [
+    "react",
+    "mobx",
+    "state-management",
+    "decorators"
+  ],
+  "author": "Patrick Hanna",
+  "license": "UNLICENSED"
+}
