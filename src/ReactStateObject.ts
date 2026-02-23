@@ -1,4 +1,5 @@
-import { isObservableObject, keys } from 'mobx';
+import { $mobx, isObservableObject } from 'mobx';
+import { ObservableObjectAdministration } from 'mobx/dist/types/observableobject';
 import { useEffect, useRef } from 'react';
 import { useInjectInstance } from './InstanceInjectionSystem';
 
@@ -78,33 +79,30 @@ export class ReactStateObject {
   }
 
   private *getChildStateObjects(): Generator<ReactStateObject> {
-    const seenKeys = new Set<PropertyKey>();
-    const instanceStore = this as Record<
-      PropertyKey,
-      unknown
-    >;
-
+    const seenKeys = new Set<string>();
     for (const key of Object.keys(this)) {
-      seenKeys.add(key);
-      const value = instanceStore[key];
-      if (this.isChildReactStateObject(key, value)) {
-        yield value;
-      }
-    }
-
-    if (!isObservableObject(this)) {
-      return;
-    }
-
-    for (const key of keys(this)) {
       if (seenKeys.has(key)) {
         continue;
       }
-
       seenKeys.add(key);
-      const value = instanceStore[key];
+      const value: any = (this as any)[key];
       if (this.isChildReactStateObject(key, value)) {
         yield value;
+      }
+    }
+
+    if (isObservableObject(this)) {
+      const observableObjectAdministration: ObservableObjectAdministration =
+        (this as any)[$mobx];
+      for (const key of observableObjectAdministration.values_.keys()) {
+        if (seenKeys.has(key.toString())) {
+          continue;
+        }
+        seenKeys.add(key.toString());
+        const value = (this as any)[key];
+        if (this.isChildReactStateObject(key, value)) {
+          yield value;
+        }
       }
     }
   }
