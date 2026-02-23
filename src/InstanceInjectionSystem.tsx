@@ -101,7 +101,10 @@ export function useInjectInstanceOrNull<T>(
     | React.Context<T | null>
     | undefined;
 
-  return useContext(ctx ?? FakeContext) as T | null;
+  const fallbackContext =
+    FakeContext as unknown as React.Context<T | null>;
+
+  return useContext(ctx ?? fallbackContext);
 }
 
 export function useInjectInstance<T>(cls: Class<T>): T {

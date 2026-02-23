@@ -57,17 +57,6 @@ components re-render when MobX observables change.
 - `react` `>=18`
 - `mobx` `>=6.0.0 <7`
 
-### Why MobX 6?
-
-The original `schoolmate` implementation inspected MobX
-observable object internals to discover child state
-objects. For the npm package, the implementation was
-adapted to use **public MobX APIs** (`isObservableObject`
-and `keys`) instead of internal MobX imports.
-
-That makes the integration much less brittle and allows
-an appropriate peer range of **MobX 6.x**.
-
 ## What MobX Does (Beginner-Friendly)
 
 MobX is a state management library built around a simple
@@ -142,9 +131,10 @@ Typical flow:
 5. Nested child `ReactStateObject`s are mounted/unmounted
    automatically
 
-This pattern appears throughout `schoolmate` for app
-layout state, observers (window size / element size),
-page state, and feature-specific state trees.
+This pattern is common in production apps for app
+layout state, environment observers (window size /
+element size), page-level state, and feature-specific
+state trees.
 
 ## Quick Start (Recommended First Example)
 
@@ -237,9 +227,10 @@ class MyState extends ReactStateObject {
 
 ### Automatic child lifecycle propagation
 
-In `schoolmate`, larger state objects often contain
-smaller ones (for example, layout state containing
-`ElementSizeObserver`, sidebar state, etc.).
+In larger apps, state objects often contain smaller
+ones (for example, a layout state containing an
+element-size observer, a sidebar state object, and
+other focused child state objects).
 
 If a property value is another `ReactStateObject`, it is
 considered a child and will mount/unmount automatically.
@@ -277,14 +268,22 @@ const state = useMountStateObject(() => new MyState());
   hook order
 - calls the state object lifecycle (`mount` / `unmount`)
 
-### Important rule
+### Important rule (always)
 
-If your state object uses `@fromHook(...)` or
-`@injectInstance(...)`, it must be created by
-`useMountStateObject(...)`.
+A `ReactStateObject` should **never** be initialized
+outside of `useMountStateObject(...)` when used from
+React.
 
-Do not create those state objects with plain `new`
-inside a component render without `useMountStateObject`.
+Always create it with:
+
+```ts
+const state = useMountStateObject(() => new MyState());
+```
+
+Do not create a `ReactStateObject` with plain `new`
+inside a React component (including `useMemo`,
+`useRef`, module-level singletons used as UI state, or
+conditional branches).
 
 ## Lifecycle Helpers
 
@@ -309,7 +308,7 @@ protected mount(): void {
 }
 ```
 
-This pattern is used throughout `schoolmate` for:
+This pattern is commonly used for:
 
 - `autorun(...)` disposers
 - DOM event listeners (`resize`, etc.)
@@ -335,9 +334,9 @@ constructor() {
 }
 ```
 
-In `schoolmate`, `withCleanup(...)` is the primary
-pattern; `hookIntoLifecycle(...)` exists for more custom
-composition scenarios.
+In most apps, `withCleanup(...)` is the primary
+pattern; `hookIntoLifecycle(...)` exists for more
+custom composition scenarios.
 
 ## MobX + React Rendering (How UI Updates)
 
@@ -390,7 +389,7 @@ class RouteState extends ReactStateObject {
 }
 ```
 
-### Example with `this` access (pattern used in schoolmate)
+### Example with `this` access (common app pattern)
 
 `@fromHook(...)` can receive a function that uses the
 state object instance as `this`.
@@ -407,9 +406,9 @@ class ModalState extends ReactStateObject {
 }
 ```
 
-This pattern is used in `schoolmate` (for example, a
-scheduler state object binds a hook-derived callback that
-needs access to the state instance).
+This pattern is useful when a feature state object binds
+a hook-derived callback or service that needs access to
+the state instance.
 
 ### Rules for `@fromHook(...)`
 
@@ -427,8 +426,9 @@ as child `ReactStateObject`s, because those values are
 managed by React hooks, not by the parent state object's
 child lifecycle traversal.
 
-This mirrors the intent of the original `schoolmate`
-implementation.
+This keeps hook-managed values under React's lifecycle
+ownership instead of treating them like nested child
+state objects.
 
 ## Class Instance Injection (DI) for React Trees
 
@@ -436,9 +436,10 @@ This library includes a simple class-instance injection
 system. It lets you bind an instance in React and then
 retrieve it later by class.
 
-This is heavily used in `schoolmate` to share app-level
-and page-level state (for example layout state, page
-observers, and feature state).
+This is a strong fit for sharing app-level and page-level
+state (for example layout state, route/page observers,
+window-size observers, and feature state) without prop
+drilling.
 
 ## `InstanceInjectionRoot`
 
@@ -528,7 +529,7 @@ class PageState extends ReactStateObject {
 }
 ```
 
-This is a central pattern in `schoolmate`, where feature
+This is a common pattern in larger apps, where feature
 state objects inject app-level or page observer state
 objects.
 
@@ -611,8 +612,8 @@ export const App = () => {
 
 ## Example: DOM Observer State (ResizeObserver pattern)
 
-A common `schoolmate` pattern is using a state object to
-wrap browser APIs like `ResizeObserver`.
+A common pattern is using a state object to wrap browser
+APIs like `ResizeObserver`.
 
 ```tsx
 import { action, observable } from 'mobx';
@@ -677,9 +678,9 @@ state class instead of scattering it across components.
 
 ## Example: Using a Hook-Derived Service in State
 
-This mirrors `schoolmate` patterns where a state object
-gets a hook-derived function (for example a toast helper)
-and calls it inside an action.
+This mirrors a common production pattern where a state
+object gets a hook-derived function (for example a toast
+helper) and calls it inside an action.
 
 ```tsx
 import { action, observable } from 'mobx';
@@ -720,7 +721,7 @@ class SaveState extends ReactStateObject {
 
 ## How This Is Commonly Used in Larger Apps (Pattern Summary)
 
-Based on the `schoolmate` usage patterns, a common
+Based on common production usage patterns, a common
 structure is:
 
 1. **App-level state objects**
@@ -749,6 +750,14 @@ This architecture keeps React components focused on UI
 while moving orchestration/subscriptions into state
 classes.
 
+Important: every `ReactStateObject` in this structure
+should still be created through `useMountStateObject(...)`
+at the React boundary that owns it. Child state objects
+can be instantiated inside parent state object
+constructors because their lifecycle is then managed by
+the parent `ReactStateObject` created via
+`useMountStateObject(...)`.
+
 ## API Reference
 
 ## `ReactStateObject`
@@ -773,6 +782,9 @@ component lifecycle.
 ```ts
 const state = useMountStateObject(() => new MyState());
 ```
+
+This is the required creation path for `ReactStateObject`
+instances used by React components.
 
 ## `fromHook(hookFn)`
 
@@ -837,7 +849,7 @@ Fix:
 
 Cause:
 
-- you created the state object with `new MyState()`
+- you created a `ReactStateObject` with `new MyState()`
   directly in a component instead of using
   `useMountStateObject(...)`
 
@@ -883,7 +895,8 @@ Fix:
 
 ### Prettier config
 
-This package copies the SchoolMate Prettier setup style,
+This package copies the author's existing Prettier setup
+style,
 including:
 
 - `.prettierrc`

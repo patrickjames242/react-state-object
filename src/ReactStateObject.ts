@@ -10,6 +10,14 @@ type AccessorDecorator<This, Value> = (
   context: ClassAccessorDecoratorContext<This, Value>
 ) => void;
 
+const FROM_HOOK_PROPERTIES_KEY = Symbol(
+  'FROM_HOOK_PROPERTIES'
+);
+
+type WithFromHookPropertiesMetadata = {
+  [FROM_HOOK_PROPERTIES_KEY]?: Set<PropertyKey>;
+};
+
 /**
  * Base class for state objects that need React lifecycle hooks,
  * nested child state object mount/unmount propagation, and hook-backed
@@ -71,10 +79,14 @@ export class ReactStateObject {
 
   private *getChildStateObjects(): Generator<ReactStateObject> {
     const seenKeys = new Set<PropertyKey>();
+    const instanceStore = this as Record<
+      PropertyKey,
+      unknown
+    >;
 
     for (const key of Object.keys(this)) {
       seenKeys.add(key);
-      const value = (this as Record<string, unknown>)[key];
+      const value = instanceStore[key];
       if (this.isChildReactStateObject(key, value)) {
         yield value;
       }
@@ -90,7 +102,7 @@ export class ReactStateObject {
       }
 
       seenKeys.add(key);
-      const value = (this as Record<string, unknown>)[key];
+      const value = instanceStore[key];
       if (this.isChildReactStateObject(key, value)) {
         yield value;
       }
@@ -106,9 +118,7 @@ export class ReactStateObject {
     }
 
     const fromHookProperties = (
-      this as {
-        [FROM_HOOK_PROPERTIES_KEY]?: Set<PropertyKey>;
-      }
+      this as WithFromHookPropertiesMetadata
     )[FROM_HOOK_PROPERTIES_KEY];
 
     if (fromHookProperties?.has(key)) {
@@ -151,47 +161,38 @@ export function invokeReactStateObjectHook(
   return hookRecorder.invoke(hook);
 }
 
-const FROM_HOOK_PROPERTIES_KEY = Symbol(
-  'FROM_HOOK_PROPERTIES'
-);
-
 export function fromHook<RSO extends ReactStateObject, R>(
   hook: (this: RSO, instance: RSO) => R
 ): AccessorDecorator<RSO, R> {
   return (_target, context) => {
     context.addInitializer(function (this: RSO) {
-      const instance = this as RSO &
-        Record<PropertyKey, unknown>;
+      const instance = this;
+      const instanceStore = instance as unknown as Record<
+        PropertyKey,
+        unknown
+      >;
+      const metadataTarget =
+        instance as unknown as WithFromHookPropertiesMetadata;
 
       const fromHookProperties =
-        (
-          instance as {
-            [FROM_HOOK_PROPERTIES_KEY]?: Set<PropertyKey>;
-          }
-        )[FROM_HOOK_PROPERTIES_KEY] ??
+        metadataTarget[FROM_HOOK_PROPERTIES_KEY] ??
         new Set<PropertyKey>();
 
-      (
-        instance as {
-          [FROM_HOOK_PROPERTIES_KEY]: Set<PropertyKey>;
-        }
-      )[FROM_HOOK_PROPERTIES_KEY] = fromHookProperties;
+      metadataTarget[FROM_HOOK_PROPERTIES_KEY] =
+        fromHookProperties;
 
       fromHookProperties.add(context.name);
 
       invokeReactStateObjectHook(() => {
         const wasVariableSetInitially = useRef(false);
-        const hookResult = hook.call(
-          instance as RSO,
-          instance
-        );
+        const hookResult = hook.call(instance, instance);
 
         const setVariable = (): void => {
           if (
             !wasVariableSetInitially.current ||
-            instance[context.name] !== hookResult
+            instanceStore[context.name] !== hookResult
           ) {
-            instance[context.name] = hookResult;
+            instanceStore[context.name] = hookResult;
           }
 
           wasVariableSetInitially.current = true;
