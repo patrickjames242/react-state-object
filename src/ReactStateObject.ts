@@ -1,4 +1,4 @@
-import { $mobx, isObservableObject } from 'mobx';
+import { $mobx, action, isObservableObject } from 'mobx';
 import { ObservableObjectAdministration } from 'mobx/dist/types/observableobject';
 import { useEffect, useRef } from 'react';
 import { useInjectInstance } from './InstanceInjectionSystem';
@@ -208,11 +208,13 @@ export function fromHook<RSO extends ReactStateObject, R>(
               return;
             }
 
-            if (context.access.set) {
-              context.access.set(instance, hookResult);
-            } else {
-              instanceStore[context.name] = hookResult;
-            }
+            action('@fromHook value update', () => {
+              if (context.access.set) {
+                context.access.set(instance, hookResult);
+              } else {
+                instanceStore[context.name] = hookResult;
+              }
+            })();
 
             previousValueRef.current = hookResult;
           });
