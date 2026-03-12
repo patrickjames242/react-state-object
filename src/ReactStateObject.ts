@@ -9,7 +9,7 @@ import { useInjectInstance } from './InstanceInjectionSystem';
 type AccessorDecorator<This, Value> = (
   _target: unknown,
   context: ClassAccessorDecoratorContext<This, Value>
-) => void;
+) => ClassAccessorDecoratorResult<This, Value> | void;
 
 const FROM_HOOK_PROPERTIES_KEY = Symbol(
   'FROM_HOOK_PROPERTIES'
@@ -33,7 +33,7 @@ export class ReactStateObject {
     // no-op
   }
 
-  public _innerMount(): void {
+  private _innerMount(): void {
     for (const child of this.getChildStateObjects()) {
       child._innerMount();
     }
@@ -45,7 +45,7 @@ export class ReactStateObject {
     this.mount();
   }
 
-  public _innerUnmount(): void {
+  private _innerUnmount(): void {
     this.unmount();
 
     for (const child of this.getChildStateObjects()) {
@@ -167,10 +167,6 @@ export function fromHook<RSO extends ReactStateObject, R>(
   return (_target, context) => {
     context.addInitializer(function (this: RSO) {
       const instance = this;
-      const instanceStore = instance as unknown as Record<
-        PropertyKey,
-        unknown
-      >;
       const metadataTarget =
         instance as unknown as WithFromHookPropertiesMetadata;
 
@@ -182,31 +178,49 @@ export function fromHook<RSO extends ReactStateObject, R>(
         fromHookProperties;
 
       fromHookProperties.add(context.name);
+    });
 
-      invokeReactStateObjectHook(() => {
-        const wasVariableSetInitially = useRef(false);
-        const hookResult = hook.call(instance, instance);
+    return {
+      init(this: RSO, value: R): R {
+        const instance = this;
+        const instanceStore = instance as unknown as Record<
+          PropertyKey,
+          unknown
+        >;
 
-        const setVariable = (): void => {
-          if (
-            !wasVariableSetInitially.current ||
-            instanceStore[context.name] !== hookResult
-          ) {
-            instanceStore[context.name] = hookResult;
+        let initialValue = value;
+        invokeReactStateObjectHook(() => {
+          const hookResult = hook.call(instance, instance);
+          const previousValueRef = useRef<R>(hookResult);
+          const hasInitializedRef = useRef(false);
+
+          if (!hasInitializedRef.current) {
+            // Returning the first hook result from `init` lets the
+            // accessor's private backing slot initialize safely before
+            // any later setter writes occur.
+            initialValue = hookResult;
+            previousValueRef.current = hookResult;
+            hasInitializedRef.current = true;
           }
 
-          wasVariableSetInitially.current = true;
-        };
+          useEffect(() => {
+            if (previousValueRef.current === hookResult) {
+              return;
+            }
 
-        if (!wasVariableSetInitially.current) {
-          setVariable();
-        }
+            if (context.access.set) {
+              context.access.set(instance, hookResult);
+            } else {
+              instanceStore[context.name] = hookResult;
+            }
 
-        useEffect(() => {
-          setVariable();
+            previousValueRef.current = hookResult;
+          });
         });
-      });
-    });
+
+        return initialValue;
+      },
+    };
   };
 }
 
@@ -255,7 +269,7 @@ export function useMountStateObject<
   }
 
   useEffect(() => {
-    const stateObject = stateObjectRef.current;
+    const stateObject = stateObjectRef.current as any;
 
     if (!stateObject) {
       throw new Error(
