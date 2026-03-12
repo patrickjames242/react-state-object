@@ -92,9 +92,11 @@ export class ReactStateObject {
     }
 
     if (isObservableObject(this)) {
-      const observableObjectAdministration: ObservableObjectAdministration =
-        (this as any)[$mobx];
-      for (const key of observableObjectAdministration.values_.keys()) {
+      const observableObjectAdministration:
+        | ObservableObjectAdministration
+        | undefined = (this as any)[$mobx];
+      for (const key of observableObjectAdministration?.values_.keys() ??
+        []) {
         if (seenKeys.has(key.toString())) {
           continue;
         }
