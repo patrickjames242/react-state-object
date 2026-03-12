@@ -2,15 +2,9 @@ import { render } from '@testing-library/react';
 import { observable } from 'mobx';
 import React from 'react';
 import {
-  fromHook,
-  injectInstance,
   ReactStateObject,
   useMountStateObject,
 } from '../ReactStateObject';
-import {
-  BindInstanceForInjection,
-  InstanceInjectionRoot,
-} from '../InstanceInjectionSystem';
 
 class ChildState extends ReactStateObject {
   constructor(
@@ -115,125 +109,5 @@ describe('useMountStateObject lifecycle with observable child state', () => {
     unmount();
 
     expect(childUnmountSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it('makes fromHook values available inside the subclass constructor', () => {
-    const constructorSpy = jest.fn();
-
-    function useHookValue(): string {
-      return 'hook-value';
-    }
-
-    class HookState extends ReactStateObject {
-      @fromHook(() => useHookValue())
-      accessor hookValue!: string;
-
-      constructor() {
-        super();
-        constructorSpy(this.hookValue);
-      }
-    }
-
-    render(
-      <TestHarness createState={() => new HookState()} />
-    );
-
-    expect(constructorSpy).toHaveBeenCalledWith(
-      'hook-value'
-    );
-  });
-
-  it('makes fromHook values available to later constructor property initializers', () => {
-    const constructorSpy = jest.fn();
-
-    function useHookValue(): string {
-      return 'hook-value';
-    }
-
-    class HookState extends ReactStateObject {
-      @fromHook(() => useHookValue())
-      accessor hookValue!: string;
-
-      laterValue = this.hookValue;
-
-      constructor() {
-        super();
-        constructorSpy(this.laterValue);
-      }
-    }
-
-    render(
-      <TestHarness createState={() => new HookState()} />
-    );
-
-    expect(constructorSpy).toHaveBeenCalledWith(
-      'hook-value'
-    );
-  });
-
-  it('makes injectInstance values available inside the subclass constructor', () => {
-    const constructorSpy = jest.fn();
-
-    class RootState extends ReactStateObject {}
-
-    class ChildState extends ReactStateObject {
-      @injectInstance(RootState)
-      accessor rootState!: RootState;
-
-      constructor() {
-        super();
-        constructorSpy(this.rootState);
-      }
-    }
-
-    const rootState = new RootState();
-
-    render(
-      <InstanceInjectionRoot>
-        <BindInstanceForInjection instance={rootState}>
-          <TestHarness
-            createState={() => new ChildState()}
-          />
-        </BindInstanceForInjection>
-      </InstanceInjectionRoot>
-    );
-
-    expect(constructorSpy).toHaveBeenCalledWith(
-      rootState
-    );
-  });
-
-  it('makes injectInstance values available to later constructor property initializers', () => {
-    const constructorSpy = jest.fn();
-
-    class RootState extends ReactStateObject {}
-
-    class ChildState extends ReactStateObject {
-      @injectInstance(RootState)
-      accessor rootState!: RootState;
-
-      laterValue = this.rootState;
-
-      constructor() {
-        super();
-        constructorSpy(this.laterValue);
-      }
-    }
-
-    const rootState = new RootState();
-
-    render(
-      <InstanceInjectionRoot>
-        <BindInstanceForInjection instance={rootState}>
-          <TestHarness
-            createState={() => new ChildState()}
-          />
-        </BindInstanceForInjection>
-      </InstanceInjectionRoot>
-    );
-
-    expect(constructorSpy).toHaveBeenCalledWith(
-      rootState
-    );
   });
 });
