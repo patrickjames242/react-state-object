@@ -212,6 +212,47 @@ describe('fromHook', () => {
     dispose();
   });
 
+  it('notifies autorun when an outer @fromHook wraps an @observable accessor on rerender', () => {
+    let setHookValue:
+      | React.Dispatch<
+          React.SetStateAction<{ label: string }>
+        >
+      | undefined;
+    const observedLabels: string[] = [];
+
+    function useHookValue(): { label: string } {
+      const [value, setValue] = React.useState({
+        label: 'first',
+      });
+      setHookValue = setValue;
+      return value;
+    }
+
+    class ObservableHookState extends ReactStateObject {
+      @fromHook(() => useHookValue())
+      @observable
+      accessor hookValue!: { label: string };
+    }
+
+    const { getStateObject } = renderFromHookState(
+      () => new ObservableHookState()
+    );
+    const stateObject = getStateObject();
+
+    const dispose = autorun(() => {
+      observedLabels.push(stateObject.hookValue.label);
+    });
+
+    act(() => {
+      setHookValue?.({ label: 'second' });
+    });
+
+    expect(stateObject.hookValue.label).toBe('second');
+    expect(observedLabels).toEqual(['first', 'second']);
+
+    dispose();
+  });
+
   it('sets @observable.ref fromHook accessors and preserves the assigned reference', () => {
     let initialValue: { label: string } | undefined;
 
@@ -242,6 +283,50 @@ describe('fromHook', () => {
   });
 
   it('notifies autorun when an @observable.ref fromHook accessor changes on rerender', () => {
+    let setHookValue:
+      | React.Dispatch<
+          React.SetStateAction<{ label: string }>
+        >
+      | undefined;
+    const observedLabels: string[] = [];
+
+    function useHookValue(): { label: string } {
+      const [value, setValue] = React.useState({
+        label: 'first',
+      });
+      setHookValue = setValue;
+      return value;
+    }
+
+    class RefHookState extends ReactStateObject {
+      @fromHook(() => useHookValue())
+      @observable.ref
+      accessor hookValue!: { label: string };
+    }
+
+    const { getStateObject } = renderFromHookState(
+      () => new RefHookState()
+    );
+    const stateObject = getStateObject();
+
+    const dispose = autorun(() => {
+      observedLabels.push(stateObject.hookValue.label);
+    });
+
+    let nextValue: { label: string } | undefined;
+
+    act(() => {
+      nextValue = { label: 'second' };
+      setHookValue?.(nextValue);
+    });
+
+    expect(stateObject.hookValue).toBe(nextValue);
+    expect(observedLabels).toEqual(['first', 'second']);
+
+    dispose();
+  });
+
+  it('notifies autorun when an outer @observable.ref wraps a fromHook accessor on rerender', () => {
     let setHookValue:
       | React.Dispatch<
           React.SetStateAction<{ label: string }>

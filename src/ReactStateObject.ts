@@ -7,7 +7,7 @@ import { useInjectInstance } from './InstanceInjectionSystem';
  * Decorator function type for class accessor decorators.
  */
 type AccessorDecorator<This, Value> = (
-  _target: unknown,
+  target: ClassAccessorDecoratorTarget<This, Value>,
   context: ClassAccessorDecoratorContext<This, Value>
 ) => ClassAccessorDecoratorResult<This, Value> | void;
 
@@ -164,7 +164,17 @@ export function invokeReactStateObjectHook(
 export function fromHook<RSO extends ReactStateObject, R>(
   hook: (this: RSO, instance: RSO) => R
 ): AccessorDecorator<RSO, R> {
-  return (_target, context) => {
+  return (target, context) => {
+    const pendingInitialValues = new WeakMap<RSO, R>();
+    const assignAccessorValue = (
+      instance: RSO,
+      value: R
+    ): void => {
+      (
+        instance as unknown as Record<PropertyKey, R>
+      )[context.name] = value;
+    };
+
     context.addInitializer(function (this: RSO) {
       const instance = this;
       const metadataTarget =
@@ -181,12 +191,30 @@ export function fromHook<RSO extends ReactStateObject, R>(
     });
 
     return {
+      get(this: RSO): R {
+        if (pendingInitialValues.has(this)) {
+          const pendingValue = pendingInitialValues.get(
+            this
+          ) as R;
+          const currentValue = target.get.call(this);
+
+          if (currentValue !== pendingValue) {
+            action('@fromHook initial value sync', () => {
+              assignAccessorValue(this, pendingValue);
+            })();
+          }
+
+          pendingInitialValues.delete(this);
+        }
+
+        return target.get.call(this);
+      },
+      set(this: RSO, value: R): void {
+        pendingInitialValues.delete(this);
+        target.set.call(this, value);
+      },
       init(this: RSO, value: R): R {
         const instance = this;
-        const instanceStore = instance as unknown as Record<
-          PropertyKey,
-          unknown
-        >;
 
         let initialValue = value;
         invokeReactStateObjectHook(() => {
@@ -199,6 +227,7 @@ export function fromHook<RSO extends ReactStateObject, R>(
             // accessor's private backing slot initialize safely before
             // any later setter writes occur.
             initialValue = hookResult;
+            pendingInitialValues.set(instance, hookResult);
             previousValueRef.current = hookResult;
             hasInitializedRef.current = true;
           }
@@ -209,11 +238,7 @@ export function fromHook<RSO extends ReactStateObject, R>(
             }
 
             action('@fromHook value update', () => {
-              if (context.access.set) {
-                context.access.set(instance, hookResult);
-              } else {
-                instanceStore[context.name] = hookResult;
-              }
+              assignAccessorValue(instance, hookResult);
             })();
 
             previousValueRef.current = hookResult;
