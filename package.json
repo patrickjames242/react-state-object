@@ -1,6 +1,6 @@
 {
   "name": "react-state-object",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MobX-friendly React state object lifecycle and hook decorators with class-instance injection.",
   "type": "module",
   "main": "./dist/index.cjs",
