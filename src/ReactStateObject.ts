@@ -1,6 +1,10 @@
 import { $mobx, action, isObservableObject } from 'mobx';
 import { ObservableObjectAdministration } from 'mobx/dist/types/observableobject';
-import { useEffect, useRef } from 'react';
+import {
+  type DependencyList,
+  useEffect,
+  useRef,
+} from 'react';
 import {
   useInjectInstance,
   useInjectInstanceOrNull,
@@ -148,6 +152,35 @@ class HookRecorder {
 }
 
 const hookRecorderStack: HookRecorder[] = [];
+const EMPTY_DEPENDENCIES: DependencyList = [];
+
+function dependenciesAreEqual(
+  previousDependencies: DependencyList | null,
+  nextDependencies: DependencyList
+): boolean {
+  if (previousDependencies === null) {
+    return false;
+  }
+
+  if (
+    previousDependencies.length !== nextDependencies.length
+  ) {
+    return false;
+  }
+
+  for (let index = 0; index < nextDependencies.length; index += 1) {
+    if (
+      !Object.is(
+        previousDependencies[index],
+        nextDependencies[index]
+      )
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
 
 export function invokeReactStateObjectHook(
   hook: Hook
@@ -341,35 +374,49 @@ function recordHooks<Result>(
 
 export function useMountStateObject<
   TStateObject extends ReactStateObject,
->(factory: () => TStateObject): TStateObject {
+>(
+  factory: () => TStateObject,
+  dependencies?: DependencyList
+): TStateObject {
   const stateObjectRef = useRef<TStateObject | null>(null);
   const hooksRef = useRef<Hook[]>([]);
+  const dependenciesRef =
+    useRef<DependencyList | null>(null);
+  const currentDependencies =
+    dependencies ?? EMPTY_DEPENDENCIES;
 
-  if (stateObjectRef.current === null) {
+  if (
+    stateObjectRef.current === null ||
+    !dependenciesAreEqual(
+      dependenciesRef.current,
+      currentDependencies
+    )
+  ) {
     hooksRef.current = recordHooks(() => {
       stateObjectRef.current = factory();
     });
+    dependenciesRef.current = currentDependencies;
   } else {
     for (const hook of hooksRef.current) {
       hook();
     }
   }
 
-  useEffect(() => {
-    const stateObject = stateObjectRef.current as any;
+  const stateObject = stateObjectRef.current;
 
+  useEffect(() => {
     if (!stateObject) {
       throw new Error(
         'useMountStateObject failed to initialize a state object.'
       );
     }
 
-    stateObject._innerMount();
+    (stateObject as any)._innerMount();
 
     return () => {
-      stateObject._innerUnmount();
+      (stateObject as any)._innerUnmount();
     };
-  }, []);
+  }, currentDependencies);
 
-  return stateObjectRef.current as TStateObject;
+  return stateObject as TStateObject;
 }

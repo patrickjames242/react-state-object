@@ -250,7 +250,7 @@ class TableState extends ReactStateObject {
 This makes it easy to create a tree of state objects
 without manually coordinating lifecycle for every child.
 
-## `useMountStateObject(factory)`
+## `useMountStateObject(factory, dependencies?)`
 
 This is the React hook that creates and owns a
 `ReactStateObject` instance.
@@ -259,14 +259,24 @@ This is the React hook that creates and owns a
 const state = useMountStateObject(() => new MyState());
 ```
 
+```ts
+const state = useMountStateObject(
+  () => new UserState(userId),
+  [userId]
+);
+```
+
 ### What it does
 
-- creates the instance once per component instance
+- creates the instance once per component instance by
+  default
 - records any React hooks used by `@fromHook(...)`
   decorators during initialization
 - replays those hooks on subsequent renders to preserve
   hook order
 - calls the state object lifecycle (`mount` / `unmount`)
+- recreates the state object when `dependencies` change
+  and reruns its lifecycle
 
 ### Important rule (always)
 
@@ -774,13 +784,21 @@ Helpers:
 - `protected withCleanup(action: () => () => void): void`
 - `protected hookIntoLifecycle({ onMount?, onUnmount? })`
 
-## `useMountStateObject(factory)`
+## `useMountStateObject(factory, dependencies?)`
 
-Creates a `ReactStateObject` once and ties it to React
-component lifecycle.
+Creates a `ReactStateObject` and ties it to React
+component lifecycle. If `dependencies` are provided, the
+state object is recreated whenever they change.
 
 ```ts
 const state = useMountStateObject(() => new MyState());
+```
+
+```ts
+const state = useMountStateObject(
+  () => new UserState(userId),
+  [userId]
+);
 ```
 
 This is the required creation path for `ReactStateObject`

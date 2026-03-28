@@ -138,6 +138,57 @@ describe('fromHook', () => {
     expect(stateObject?.hookValue).toBe('second');
   });
 
+  it('recreates hook-backed state when useMountStateObject dependencies change', () => {
+    const observedStates: HookState[] = [];
+
+    function useHookValue(seed: string): string {
+      return React.useMemo(
+        () => `${seed}-value`,
+        [seed]
+      );
+    }
+
+    class HookState extends ReactStateObject {
+      @fromHook(function (this: HookState) {
+        return useHookValue(this.seed);
+      })
+      accessor hookValue!: string;
+
+      constructor(readonly seed: string) {
+        super();
+      }
+    }
+
+    function CaptureStateHarness({
+      seed,
+    }: {
+      seed: string;
+    }): JSX.Element | null {
+      const stateObject = useMountStateObject(
+        () => new HookState(seed),
+        [seed]
+      );
+
+      observedStates.push(stateObject);
+      return null;
+    }
+
+    const { rerender } = render(
+      <CaptureStateHarness seed="first" />
+    );
+
+    expect(observedStates[0]?.hookValue).toBe(
+      'first-value'
+    );
+
+    rerender(<CaptureStateHarness seed="second" />);
+
+    expect(observedStates[1]?.hookValue).toBe(
+      'second-value'
+    );
+    expect(observedStates[0]).not.toBe(observedStates[1]);
+  });
+
   it('sets @observable fromHook accessors and keeps the assigned value observable', () => {
     let setHookValue:
       | React.Dispatch<
