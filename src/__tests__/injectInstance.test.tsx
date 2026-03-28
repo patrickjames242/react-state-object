@@ -281,4 +281,66 @@ describe('injectInstance', () => {
 
     dispose();
   });
+
+  it('returns null when optional injectInstance has no bound instance', () => {
+    const constructorSpy = jest.fn();
+
+    class MissingRootState extends ReactStateObject {}
+
+    class OptionalInjectedState extends ReactStateObject {
+      @injectInstance(MissingRootState, {
+        optional: true,
+      })
+      accessor rootState: MissingRootState | null = null;
+
+      constructor() {
+        super();
+        constructorSpy(this.rootState);
+      }
+    }
+
+    render(
+      <InstanceInjectionRoot>
+        <TestHarness
+          createState={() => new OptionalInjectedState()}
+        />
+      </InstanceInjectionRoot>
+    );
+
+    expect(constructorSpy).toHaveBeenCalledWith(null);
+  });
+
+  it('returns the bound instance when optional injectInstance is available', () => {
+    const constructorSpy = jest.fn();
+
+    class RootState extends ReactStateObject {}
+
+    class OptionalInjectedState extends ReactStateObject {
+      @injectInstance(RootState, {
+        optional: true,
+      })
+      accessor rootState: RootState | null = null;
+
+      constructor() {
+        super();
+        constructorSpy(this.rootState);
+      }
+    }
+
+    const rootState = new RootState();
+
+    render(
+      <InstanceInjectionRoot>
+        <BindInstanceForInjection instance={rootState}>
+          <TestHarness
+            createState={() => new OptionalInjectedState()}
+          />
+        </BindInstanceForInjection>
+      </InstanceInjectionRoot>
+    );
+
+    expect(constructorSpy).toHaveBeenCalledWith(
+      rootState
+    );
+  });
 });
