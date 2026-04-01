@@ -9,27 +9,28 @@ import React from 'react';
 import {
   fromHook,
   ReactStateObject,
+  type StateObjectClass,
   useMountStateObject,
 } from '../ReactStateObject';
 
 function TestHarness({
-  createState,
+  StateObjectClass,
 }: {
-  createState: () => ReactStateObject;
+  StateObjectClass: StateObjectClass<ReactStateObject>;
 }): JSX.Element | null {
-  useMountStateObject(createState);
+  useMountStateObject(StateObjectClass);
   return null;
 }
 
 function renderFromHookState<
   TState extends ReactStateObject,
 >(
-  createState: () => TState
+  StateObjectClass: StateObjectClass<TState>
 ): { getStateObject: () => TState } {
   let stateObject: TState | undefined;
 
   function CaptureStateHarness(): JSX.Element | null {
-    stateObject = useMountStateObject(createState);
+    stateObject = useMountStateObject(StateObjectClass);
     return null;
   }
 
@@ -67,7 +68,7 @@ describe('fromHook', () => {
     }
 
     render(
-      <TestHarness createState={() => new HookState()} />
+      <TestHarness StateObjectClass={HookState} />
     );
 
     expect(constructorSpy).toHaveBeenCalledWith(
@@ -95,7 +96,7 @@ describe('fromHook', () => {
     }
 
     render(
-      <TestHarness createState={() => new HookState()} />
+      <TestHarness StateObjectClass={HookState} />
     );
 
     expect(constructorSpy).toHaveBeenCalledWith(
@@ -121,9 +122,7 @@ describe('fromHook', () => {
     }
 
     function CaptureStateHarness(): JSX.Element | null {
-      stateObject = useMountStateObject(
-        () => new HookState()
-      );
+      stateObject = useMountStateObject(HookState);
       return null;
     }
 
@@ -165,8 +164,8 @@ describe('fromHook', () => {
       seed: string;
     }): JSX.Element | null {
       const stateObject = useMountStateObject(
-        () => new HookState(seed),
-        [seed]
+        HookState,
+        seed
       );
 
       observedStates.push(stateObject);
@@ -211,7 +210,7 @@ describe('fromHook', () => {
     }
 
     const { getStateObject } = renderFromHookState(
-      () => new ObservableHookState()
+      ObservableHookState
     );
     const stateObject = getStateObject();
 
@@ -245,7 +244,7 @@ describe('fromHook', () => {
     }
 
     const { getStateObject } = renderFromHookState(
-      () => new ObservableHookState()
+      ObservableHookState
     );
     const stateObject = getStateObject();
 
@@ -286,7 +285,7 @@ describe('fromHook', () => {
     }
 
     const { getStateObject } = renderFromHookState(
-      () => new ObservableHookState()
+      ObservableHookState
     );
     const stateObject = getStateObject();
 
@@ -323,7 +322,7 @@ describe('fromHook', () => {
     }
 
     const { getStateObject } = renderFromHookState(
-      () => new RefHookState()
+      RefHookState
     );
     const stateObject = getStateObject();
 
@@ -356,7 +355,7 @@ describe('fromHook', () => {
     }
 
     const { getStateObject } = renderFromHookState(
-      () => new RefHookState()
+      RefHookState
     );
     const stateObject = getStateObject();
 
@@ -400,7 +399,7 @@ describe('fromHook', () => {
     }
 
     const { getStateObject } = renderFromHookState(
-      () => new RefHookState()
+      RefHookState
     );
     const stateObject = getStateObject();
 

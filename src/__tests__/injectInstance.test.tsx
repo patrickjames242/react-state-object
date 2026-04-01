@@ -13,23 +13,24 @@ import {
   injectInstance,
   mountStateObject,
   ReactStateObject,
+  type StateObjectClass,
   useMountStateObject,
 } from '../ReactStateObject';
 
 function TestHarness({
-  createState,
+  StateObjectClass,
 }: {
-  createState: () => ReactStateObject;
+  StateObjectClass: StateObjectClass<ReactStateObject>;
 }): JSX.Element | null {
-  useMountStateObject(createState);
+  useMountStateObject(StateObjectClass);
   return null;
 }
 
 function renderInjectedState<TState extends ReactStateObject>({
-  createState,
+  StateObjectClass,
   initialRootState,
 }: {
-  createState: () => TState;
+  StateObjectClass: StateObjectClass<TState>;
   initialRootState: ReactStateObject;
 }): {
   clickUpdate: () => void;
@@ -38,7 +39,7 @@ function renderInjectedState<TState extends ReactStateObject>({
   let stateObject: TState | undefined;
 
   function CaptureStateHarness(): JSX.Element | null {
-    stateObject = useMountStateObject(createState);
+    stateObject = useMountStateObject(StateObjectClass);
     return null;
   }
 
@@ -115,9 +116,7 @@ describe('injectInstance', () => {
     render(
       <InstanceInjectionRoot>
         <BindInstanceForInjection instance={rootState}>
-          <TestHarness
-            createState={() => new ChildState()}
-          />
+          <TestHarness StateObjectClass={ChildState} />
         </BindInstanceForInjection>
       </InstanceInjectionRoot>
     );
@@ -149,9 +148,7 @@ describe('injectInstance', () => {
     render(
       <InstanceInjectionRoot>
         <BindInstanceForInjection instance={rootState}>
-          <TestHarness
-            createState={() => new ChildState()}
-          />
+          <TestHarness StateObjectClass={ChildState} />
         </BindInstanceForInjection>
       </InstanceInjectionRoot>
     );
@@ -175,7 +172,7 @@ describe('injectInstance', () => {
     }
 
     const { getStateObject } = renderInjectedState({
-      createState: () => new ObservableInjectedState(),
+      StateObjectClass: ObservableInjectedState,
       initialRootState: new RootState('first'),
     });
     const stateObject = getStateObject();
@@ -202,7 +199,7 @@ describe('injectInstance', () => {
     const observedLabels: string[] = [];
     const { clickUpdate, getStateObject } =
       renderInjectedState({
-        createState: () => new ObservableInjectedState(),
+        StateObjectClass: ObservableInjectedState,
         initialRootState: new RootState('first'),
       });
     const stateObject = getStateObject();
@@ -237,7 +234,7 @@ describe('injectInstance', () => {
 
     const initialRootState = new RootState('first');
     const { getStateObject } = renderInjectedState({
-      createState: () => new RefInjectedState(),
+      StateObjectClass: RefInjectedState,
       initialRootState,
     });
     const stateObject = getStateObject();
@@ -264,7 +261,7 @@ describe('injectInstance', () => {
     const observedValues: RootState[] = [];
     const { clickUpdate, getStateObject } =
       renderInjectedState({
-        createState: () => new RefInjectedState(),
+        StateObjectClass: RefInjectedState,
         initialRootState: new RootState('first'),
       });
     const stateObject = getStateObject();
@@ -303,7 +300,7 @@ describe('injectInstance', () => {
     render(
       <InstanceInjectionRoot>
         <TestHarness
-          createState={() => new OptionalInjectedState()}
+          StateObjectClass={OptionalInjectedState}
         />
       </InstanceInjectionRoot>
     );
@@ -334,7 +331,7 @@ describe('injectInstance', () => {
       <InstanceInjectionRoot>
         <BindInstanceForInjection instance={rootState}>
           <TestHarness
-            createState={() => new OptionalInjectedState()}
+            StateObjectClass={OptionalInjectedState}
           />
         </BindInstanceForInjection>
       </InstanceInjectionRoot>
@@ -378,7 +375,7 @@ describe('injectInstance', () => {
     const { unmount } = render(
       <InstanceInjectionRoot>
         <BindInstanceForInjection instance={rootState}>
-          <TestHarness createState={() => new ChildState()} />
+          <TestHarness StateObjectClass={ChildState} />
         </BindInstanceForInjection>
       </InstanceInjectionRoot>
     );
@@ -417,7 +414,7 @@ describe('injectInstance', () => {
     render(
       <InstanceInjectionRoot>
         <BindInstanceForInjection instance={rootState}>
-          <TestHarness createState={() => new ChildState()} />
+          <TestHarness StateObjectClass={ChildState} />
         </BindInstanceForInjection>
       </InstanceInjectionRoot>
     );

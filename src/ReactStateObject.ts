@@ -23,6 +23,10 @@ type WithMountStateObjectPropertiesMetadata = {
 };
 
 type LifecyclePhase = 'mount' | 'unmount';
+export type StateObjectClass<
+  TStateObject extends ReactStateObject,
+  TArgs extends readonly unknown[] = readonly unknown[],
+> = new (...args: TArgs) => TStateObject;
 
 class LifecycleMethodContext {
   private readonly visitedInstances =
@@ -180,9 +184,7 @@ export function mountStateObject<This, Value>(
  * @example
  * ```tsx
  * const CounterScreen = observer(() => {
- *   const state = useMountStateObject(
- *     () => new CounterState()
- *   );
+ *   const state = useMountStateObject(CounterState);
  *
  *   return <div>{state.count}</div>;
  * });
@@ -404,7 +406,6 @@ class HookRecorder {
 }
 
 const hookRecorderStack: HookRecorder[] = [];
-const EMPTY_DEPENDENCIES: DependencyList = [];
 
 function dependenciesAreEqual(
   previousDependencies: DependencyList | null,
@@ -709,32 +710,70 @@ function recordHooks<Result>(
  *
  * @example
  * ```tsx
- * const state = useMountStateObject(
- *   () => new CounterState()
- * );
+ * const state = useMountStateObject(CounterState);
  * ```
  *
  * @example
  * ```tsx
  * const state = useMountStateObject(
- *   () => new UserState(userId),
- *   [userId]
+ *   UserState,
+ *   userId
  * );
  * ```
  */
 export function useMountStateObject<
   TStateObject extends ReactStateObject,
+  TArgs extends readonly unknown[],
 >(
+  StateObjectClass: StateObjectClass<
+    TStateObject,
+    TArgs
+  >,
+  ...constructorArgs: TArgs
+): TStateObject;
+
+export function useMountStateObject<
+  TStateObject extends ReactStateObject,
+  TArgs extends readonly unknown[],
+>(
+  StateObjectClass: StateObjectClass<
+    TStateObject,
+    TArgs
+  >,
   factory: () => TStateObject,
-  dependencies?: DependencyList
+  dependencies: DependencyList
+): TStateObject;
+
+export function useMountStateObject<
+  TStateObject extends ReactStateObject,
+  TArgs extends readonly unknown[],
+>(
+  StateObjectClass: StateObjectClass<
+    TStateObject,
+    TArgs
+  >,
+  ...args:
+    | [factory: () => TStateObject, dependencies: DependencyList]
+    | readonly unknown[]
 ): TStateObject {
   const stateObjectRef = useRef<TStateObject | null>(null);
   const hooksRef = useRef<Hook[]>([]);
   const dependenciesRef = useRef<DependencyList | null>(
     null
   );
-  const currentDependencies =
-    dependencies ?? EMPTY_DEPENDENCIES;
+  const usesCustomFactory =
+    args.length === 2 &&
+    typeof args[0] === 'function' &&
+    Array.isArray(args[1]);
+  const factory = usesCustomFactory
+    ? (args[0] as () => TStateObject)
+    : () =>
+        new StateObjectClass(
+          ...(args as TArgs)
+        );
+  const currentDependencies = usesCustomFactory
+    ? [StateObjectClass, ...(args[1] as DependencyList)]
+    : [StateObjectClass, ...(args as TArgs)];
 
   if (
     stateObjectRef.current === null ||

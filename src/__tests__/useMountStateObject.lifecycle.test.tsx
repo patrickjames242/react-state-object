@@ -4,6 +4,7 @@ import React from 'react';
 import {
   mountStateObject,
   ReactStateObject,
+  type StateObjectClass,
   useMountStateObject,
 } from '../ReactStateObject';
 
@@ -117,19 +118,37 @@ class UnmarkedParentState extends ReactStateObject {
   }
 }
 
-function TestHarness({
+function TestHarness<
+  TState extends ReactStateObject,
+  TArgs extends readonly unknown[],
+>({
+  StateObjectClass,
   createState,
 }: {
-  createState: () => ReactStateObject;
+  StateObjectClass: StateObjectClass<TState, TArgs>;
+  createState: () => TState;
 }): JSX.Element | null {
-  useMountStateObject(createState);
+  useMountStateObject(
+    StateObjectClass,
+    createState,
+    []
+  );
   return null;
 }
 
-function renderState(
-  createState: () => ReactStateObject
+function renderState<
+  TState extends ReactStateObject,
+  TArgs extends readonly unknown[],
+>(
+  StateObjectClass: StateObjectClass<TState, TArgs>,
+  createState: () => TState
 ) {
-  return render(<TestHarness createState={createState} />);
+  return render(
+    <TestHarness
+      StateObjectClass={StateObjectClass}
+      createState={createState}
+    />
+  );
 }
 
 class IdentifiedState extends ReactStateObject {
@@ -158,6 +177,7 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
     const childUnmountSpy = jest.fn();
 
     renderState(
+      MarkedAccessorParentState,
       () =>
         new MarkedAccessorParentState(
           parentMountSpy,
@@ -177,6 +197,7 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
     const childUnmountSpy = jest.fn();
 
     renderState(
+      MarkedAccessorParentState,
       () =>
         new MarkedAccessorParentState(
           parentMountSpy,
@@ -196,6 +217,7 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
     const childUnmountSpy = jest.fn();
 
     const { unmount } = renderState(
+      MarkedAccessorParentState,
       () =>
         new MarkedAccessorParentState(
           parentMountSpy,
@@ -217,6 +239,7 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
     const childUnmountSpy = jest.fn();
 
     renderState(
+      ObservableFirstMarkedAccessorParentState,
       () =>
         new ObservableFirstMarkedAccessorParentState(
           parentMountSpy,
@@ -237,6 +260,7 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
     const childUnmountSpy = jest.fn();
 
     const { unmount } = renderState(
+      ObservableFirstMarkedAccessorParentState,
       () =>
         new ObservableFirstMarkedAccessorParentState(
           parentMountSpy,
@@ -259,6 +283,7 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
     const childUnmountSpy = jest.fn();
 
     const { unmount } = renderState(
+      MarkedFieldParentState,
       () =>
         new MarkedFieldParentState(
           parentMountSpy,
@@ -282,6 +307,7 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
     const childUnmountSpy = jest.fn();
 
     const { unmount } = renderState(
+      UnmarkedParentState,
       () =>
         new UnmarkedParentState(
           parentMountSpy,
@@ -317,6 +343,7 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
 
     expect(() =>
       renderState(
+        DuplicateSiblingParentState,
         () =>
           new DuplicateSiblingParentState(
             new ChildState(jest.fn(), jest.fn())
@@ -354,6 +381,7 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
 
     expect(() =>
       renderState(
+        RootState,
         () => new RootState(new ChildState(jest.fn(), jest.fn()))
       )
     ).toThrow(
@@ -391,10 +419,13 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
     }
 
     let rootState!: MutableRootState;
-    const { unmount } = renderState(() => {
-      rootState = new MutableRootState();
-      return rootState;
-    });
+    const { unmount } = renderState(
+      MutableRootState,
+      () => {
+        rootState = new MutableRootState();
+        return rootState;
+      }
+    );
 
     rootState.right.child = rootState.left.child;
 
@@ -410,7 +441,10 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
     }
 
     expect(() =>
-      renderState(() => new InvalidChildState())
+      renderState(
+        InvalidChildState,
+        () => new InvalidChildState()
+      )
     ).toThrow(
       /Invalid @mountStateObject property InvalidChildState\.child during mount/
     );
@@ -428,10 +462,13 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
     }
 
     let parentState!: MutableChildParentState;
-    const { unmount } = renderState(() => {
-      parentState = new MutableChildParentState();
-      return parentState;
-    });
+    const { unmount } = renderState(
+      MutableChildParentState,
+      () => {
+        parentState = new MutableChildParentState();
+        return parentState;
+      }
+    );
 
     parentState.child = null;
 
@@ -440,7 +477,7 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
     );
   });
 
-  it('recreates the state object and reruns lifecycle when dependencies change', () => {
+  it('recreates the state object and reruns lifecycle when constructor arguments change', () => {
     const mountSpy = jest.fn();
     const unmountSpy = jest.fn();
     const observedStates: IdentifiedState[] = [];
@@ -451,13 +488,10 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
       stateId: string;
     }): JSX.Element | null {
       const state = useMountStateObject(
-        () =>
-          new IdentifiedState(
-            stateId,
-            mountSpy,
-            unmountSpy
-          ),
-        [stateId]
+        IdentifiedState,
+        stateId,
+        mountSpy,
+        unmountSpy
       );
 
       observedStates.push(state);
@@ -479,17 +513,9 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
     expect(unmountSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('retains the same state object when dependencies do not change', () => {
+  it('retains the same state object when constructor arguments do not change', () => {
     const mountSpy = jest.fn();
     const unmountSpy = jest.fn();
-    const createState = jest.fn(
-      (stateId: string) =>
-        new IdentifiedState(
-          stateId,
-          mountSpy,
-          unmountSpy
-        )
-    );
     const observedStates: IdentifiedState[] = [];
 
     function TestDependencyHarness({
@@ -498,8 +524,10 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
       stateId: string;
     }): JSX.Element | null {
       const state = useMountStateObject(
-        () => createState(stateId),
-        [stateId]
+        IdentifiedState,
+        stateId,
+        mountSpy,
+        unmountSpy
       );
 
       observedStates.push(state);
@@ -513,14 +541,66 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
     rerender(<TestDependencyHarness stateId="same" />);
 
     expect(observedStates[0]).toBe(observedStates[1]);
-    expect(createState).toHaveBeenCalledTimes(1);
     expect(mountSpy).toHaveBeenCalledTimes(1);
     expect(unmountSpy).not.toHaveBeenCalled();
   });
 
-  it('retains the same state object across rerenders when no dependency array is provided', () => {
+  it('recreates the state object when the class identity changes', () => {
     const mountSpy = jest.fn();
     const unmountSpy = jest.fn();
+    const observedStates: IdentifiedState[] = [];
+
+    class FirstIdentifiedState extends IdentifiedState {}
+    class SecondIdentifiedState extends IdentifiedState {}
+
+    function TestDependencyHarness({
+      StateObjectClass,
+      stateId,
+    }: {
+      StateObjectClass: typeof IdentifiedState;
+      stateId: string;
+    }): JSX.Element | null {
+      const state = useMountStateObject(
+        StateObjectClass,
+        stateId,
+        mountSpy,
+        unmountSpy
+      );
+
+      observedStates.push(state);
+      return null;
+    }
+
+    const { rerender } = render(
+      <TestDependencyHarness
+        StateObjectClass={FirstIdentifiedState}
+        stateId="same"
+      />
+    );
+
+    rerender(
+      <TestDependencyHarness
+        StateObjectClass={SecondIdentifiedState}
+        stateId="same"
+      />
+    );
+
+    expect(observedStates[0]).not.toBe(observedStates[1]);
+    expect(observedStates[0]).toBeInstanceOf(
+      FirstIdentifiedState
+    );
+    expect(observedStates[1]).toBeInstanceOf(
+      SecondIdentifiedState
+    );
+    expect(mountSpy).toHaveBeenNthCalledWith(1, 'same');
+    expect(unmountSpy).toHaveBeenNthCalledWith(1, 'same');
+    expect(mountSpy).toHaveBeenNthCalledWith(2, 'same');
+  });
+
+  it('uses explicit dependencies for custom construction while still tracking the class identity', () => {
+    const mountSpy = jest.fn();
+    const unmountSpy = jest.fn();
+    const observedStates: IdentifiedState[] = [];
     const createState = jest.fn(
       (stateId: string) =>
         new IdentifiedState(
@@ -529,15 +609,18 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
           unmountSpy
         )
     );
-    const observedStates: IdentifiedState[] = [];
 
     function TestDependencyHarness({
       stateId,
+      dependency,
     }: {
       stateId: string;
+      dependency: string;
     }): JSX.Element | null {
-      const state = useMountStateObject(() =>
-        createState(stateId)
+      const state = useMountStateObject(
+        IdentifiedState,
+        () => createState(stateId),
+        [dependency]
       );
 
       observedStates.push(state);
@@ -545,16 +628,31 @@ describe('useMountStateObject lifecycle with explicit child state', () => {
     }
 
     const { rerender } = render(
-      <TestDependencyHarness stateId="first" />
+      <TestDependencyHarness
+        stateId="first"
+        dependency="same"
+      />
     );
 
-    rerender(<TestDependencyHarness stateId="second" />);
+    rerender(
+      <TestDependencyHarness
+        stateId="second"
+        dependency="same"
+      />
+    );
+    rerender(
+      <TestDependencyHarness
+        stateId="third"
+        dependency="changed"
+      />
+    );
 
     expect(observedStates[0]).toBe(observedStates[1]);
+    expect(observedStates[1]).not.toBe(observedStates[2]);
     expect(observedStates[0]?.id).toBe('first');
     expect(observedStates[1]?.id).toBe('first');
-    expect(createState).toHaveBeenCalledTimes(1);
-    expect(mountSpy).toHaveBeenCalledTimes(1);
-    expect(unmountSpy).not.toHaveBeenCalled();
+    expect(observedStates[2]?.id).toBe('third');
+    expect(createState).toHaveBeenCalledTimes(2);
+    expect(unmountSpy).toHaveBeenCalledTimes(1);
   });
 });

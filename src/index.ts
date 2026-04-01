@@ -11,5 +11,6 @@ export {
   injectInstance,
   invokeReactStateObjectHook,
   useMountStateObject,
+  type StateObjectClass,
   type Hook,
 } from './ReactStateObject';

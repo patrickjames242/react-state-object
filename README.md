@@ -123,7 +123,7 @@ Think of a `ReactStateObject` as:
 Typical flow:
 
 1. React component creates the class via
-   `useMountStateObject(() => new MyState())`
+   `useMountStateObject(MyState)`
 2. React owns the instance lifetime
 3. The state object receives `mount()` on component mount
 4. The state object receives `unmount()` on component
@@ -181,9 +181,7 @@ class CounterState extends ReactStateObject {
 }
 
 export const CounterScreen = observer((): JSX.Element => {
-  const state = useMountStateObject(
-    () => new CounterState()
-  );
+  const state = useMountStateObject(CounterState);
 
   return (
     <div>
@@ -252,17 +250,25 @@ class TableState extends ReactStateObject {
 This makes it easy to create a tree of state objects
 without manually coordinating lifecycle for every child.
 
-## `useMountStateObject(factory, dependencies?)`
+## `useMountStateObject(StateObjectClass, ...constructorArgs)`
 
 This is the React hook that creates and owns a
 `ReactStateObject` instance.
 
 ```ts
-const state = useMountStateObject(() => new MyState());
+const state = useMountStateObject(MyState);
 ```
 
 ```ts
 const state = useMountStateObject(
+  UserState,
+  userId
+);
+```
+
+```ts
+const state = useMountStateObject(
+  UserState,
   () => new UserState(userId),
   [userId]
 );
@@ -270,8 +276,13 @@ const state = useMountStateObject(
 
 ### What it does
 
-- creates the instance once per component instance by
-  default
+- creates the instance once per component instance while
+  the class identity and tracked dependencies stay the
+  same
+- always treats `StateObjectClass` as a dependency, so a
+  changed class identity recreates the instance
+- treats constructor arguments as dependencies in the
+  `useMountStateObject(StateObjectClass, ...args)` form
 - records any React hooks used by `@fromHook(...)`
   decorators during initialization
 - replays those hooks on subsequent renders to preserve
@@ -289,7 +300,7 @@ React.
 Always create it with:
 
 ```ts
-const state = useMountStateObject(() => new MyState());
+const state = useMountStateObject(MyState);
 ```
 
 Do not create a `ReactStateObject` with plain `new`
@@ -361,7 +372,7 @@ React integration pattern).
 import { observer } from 'mobx-react-lite';
 
 const UserPanel = observer(() => {
-  const state = useMountStateObject(() => new UserState());
+  const state = useMountStateObject(UserState);
 
   // Reading observables here makes this component react.
   return <div>{state.userName}</div>;
@@ -595,9 +606,8 @@ const CounterPageBody = observer(() => {
 });
 
 const CounterPage = observer(() => {
-  const pageState = useMountStateObject(
-    () => new CounterPageState()
-  );
+  const pageState =
+    useMountStateObject(CounterPageState);
 
   return (
     <BindInstanceForInjection instance={pageState}>
@@ -607,9 +617,7 @@ const CounterPage = observer(() => {
 });
 
 export const App = () => {
-  const appState = useMountStateObject(
-    () => new AppState()
-  );
+  const appState = useMountStateObject(AppState);
 
   return (
     <InstanceInjectionRoot>
@@ -669,9 +677,7 @@ class ElementSizeState extends ReactStateObject {
 }
 
 export const MeasuredPanel = observer(() => {
-  const size = useMountStateObject(
-    () => new ElementSizeState()
-  );
+  const size = useMountStateObject(ElementSizeState);
 
   return (
     <div>
@@ -786,18 +792,29 @@ Helpers:
 - `protected withCleanup(action: () => () => void): void`
 - `protected hookIntoLifecycle({ onMount?, onUnmount? })`
 
-## `useMountStateObject(factory, dependencies?)`
+## `useMountStateObject(StateObjectClass, ...constructorArgs)`
 
 Creates a `ReactStateObject` and ties it to React
-component lifecycle. If `dependencies` are provided, the
-state object is recreated whenever they change.
+component lifecycle. The class identity is always a
+dependency. In the constructor-argument form, those
+arguments are dependencies automatically. In the custom
+factory form, the explicit dependency array is used in
+addition to the class identity.
 
 ```ts
-const state = useMountStateObject(() => new MyState());
+const state = useMountStateObject(MyState);
 ```
 
 ```ts
 const state = useMountStateObject(
+  UserState,
+  userId
+);
+```
+
+```ts
+const state = useMountStateObject(
+  UserState,
   () => new UserState(userId),
   [userId]
 );
