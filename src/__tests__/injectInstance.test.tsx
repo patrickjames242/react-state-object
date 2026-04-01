@@ -11,6 +11,7 @@ import {
 } from '../InstanceInjectionSystem';
 import {
   injectInstance,
+  mountStateObject,
   ReactStateObject,
   useMountStateObject,
 } from '../ReactStateObject';
@@ -342,5 +343,86 @@ describe('injectInstance', () => {
     expect(constructorSpy).toHaveBeenCalledWith(
       rootState
     );
+  });
+
+  it('does not mount an injected ReactStateObject unless it is explicitly marked as a child', () => {
+    const rootMountSpy = jest.fn();
+    const rootUnmountSpy = jest.fn();
+    const childMountSpy = jest.fn();
+    const childUnmountSpy = jest.fn();
+
+    class RootState extends ReactStateObject {
+      protected override mount(): void {
+        rootMountSpy();
+      }
+
+      protected override unmount(): void {
+        rootUnmountSpy();
+      }
+    }
+
+    class ChildState extends ReactStateObject {
+      @injectInstance(RootState)
+      accessor rootState!: RootState;
+
+      protected override mount(): void {
+        childMountSpy();
+      }
+
+      protected override unmount(): void {
+        childUnmountSpy();
+      }
+    }
+
+    const rootState = new RootState();
+    const { unmount } = render(
+      <InstanceInjectionRoot>
+        <BindInstanceForInjection instance={rootState}>
+          <TestHarness createState={() => new ChildState()} />
+        </BindInstanceForInjection>
+      </InstanceInjectionRoot>
+    );
+
+    expect(childMountSpy).toHaveBeenCalledTimes(1);
+    expect(rootMountSpy).not.toHaveBeenCalled();
+
+    unmount();
+
+    expect(childUnmountSpy).toHaveBeenCalledTimes(1);
+    expect(rootUnmountSpy).not.toHaveBeenCalled();
+  });
+
+  it('mounts an injected ReactStateObject when it is explicitly marked as a child', () => {
+    const rootMountSpy = jest.fn();
+    const childMountSpy = jest.fn();
+
+    class RootState extends ReactStateObject {
+      protected override mount(): void {
+        rootMountSpy();
+      }
+    }
+
+    class ChildState extends ReactStateObject {
+      @mountStateObject
+      @injectInstance(RootState)
+      accessor rootState!: RootState;
+
+      protected override mount(): void {
+        childMountSpy();
+      }
+    }
+
+    const rootState = new RootState();
+
+    render(
+      <InstanceInjectionRoot>
+        <BindInstanceForInjection instance={rootState}>
+          <TestHarness createState={() => new ChildState()} />
+        </BindInstanceForInjection>
+      </InstanceInjectionRoot>
+    );
+
+    expect(rootMountSpy).toHaveBeenCalledTimes(1);
+    expect(childMountSpy).toHaveBeenCalledTimes(1);
   });
 });

@@ -118,7 +118,7 @@ Think of a `ReactStateObject` as:
 - a **MobX-powered class state model**
 - whose lifecycle is controlled by a React component
 - and which may contain child state objects that mount /
-  unmount automatically
+  unmount explicitly when marked
 
 Typical flow:
 
@@ -128,8 +128,8 @@ Typical flow:
 3. The state object receives `mount()` on component mount
 4. The state object receives `unmount()` on component
    unmount
-5. Nested child `ReactStateObject`s are mounted/unmounted
-   automatically
+5. Marked child `ReactStateObject`s are mounted/unmounted
+   recursively
 
 This pattern is common in production apps for app
 layout state, environment observers (window size /
@@ -218,22 +218,23 @@ class MyState extends ReactStateObject {
 ### What it adds on top of a plain MobX class
 
 - `mount()` and `unmount()` hooks
-- nested child state object detection and recursive
+- explicit child state object registration and recursive
   mount/unmount
 - `withCleanup(...)` helper to register disposer
   functions
 - `hookIntoLifecycle(...)` for advanced lifecycle
   registration
 
-### Automatic child lifecycle propagation
+### Explicit child lifecycle propagation
 
 In larger apps, state objects often contain smaller
 ones (for example, a layout state containing an
 element-size observer, a sidebar state object, and
 other focused child state objects).
 
-If a property value is another `ReactStateObject`, it is
-considered a child and will mount/unmount automatically.
+Mark child state objects with `@mountStateObject` when
+the parent owns their lifecycle. Unmarked references are
+ignored by lifecycle traversal.
 
 ```ts
 class FiltersState extends ReactStateObject {
@@ -241,6 +242,7 @@ class FiltersState extends ReactStateObject {
 }
 
 class TableState extends ReactStateObject {
+  @mountStateObject
   @observable accessor filters = new FiltersState();
 }
 
@@ -429,16 +431,15 @@ the state instance.
 - Typically combine it with `@observable` when you want
   MobX reactivity on the accessor value.
 
-### Why hook-backed accessors are excluded from child mount recursion
+### Why injection and hook-backed values are not children by default
 
-The library does **not** treat `@fromHook(...)` accessors
-as child `ReactStateObject`s, because those values are
-managed by React hooks, not by the parent state object's
-child lifecycle traversal.
+`@fromHook(...)` and `@injectInstance(...)` do not
+participate in child lifecycle traversal unless they are
+also decorated with `@mountStateObject`.
 
-This keeps hook-managed values under React's lifecycle
-ownership instead of treating them like nested child
-state objects.
+This keeps hook-managed and injected values under their
+own ownership model unless you explicitly declare parent
+ownership.
 
 ## Class Instance Injection (DI) for React Trees
 
@@ -743,12 +744,13 @@ structure is:
 2. **Page-level state objects**
    - created in page/layout components
    - may inject app-level state via `@injectInstance(...)`
-   - may compose nested child state objects
+   - may compose nested child state objects with
+     `@mountStateObject`
 
 3. **Feature sub-state objects**
    - nested inside page state (forms, sidebar state,
      tables, save state, UI state)
-   - mounted/unmounted automatically through parent
+   - mounted/unmounted explicitly through parent
      `ReactStateObject`
 
 4. **React components**

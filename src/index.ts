@@ -5,6 +5,7 @@ export {
   useInjectInstanceOrNull,
 } from './InstanceInjectionSystem';
 export {
+  mountStateObject,
   ReactStateObject,
   fromHook,
   injectInstance,

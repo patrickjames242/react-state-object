@@ -1,5 +1,4 @@
-import { $mobx, action, isObservableObject } from 'mobx';
-import { ObservableObjectAdministration } from 'mobx/dist/types/observableobject';
+import { action } from 'mobx';
 import {
   type DependencyList,
   useEffect,
@@ -18,13 +17,101 @@ type AccessorDecorator<This, Value> = (
   context: ClassAccessorDecoratorContext<This, Value>
 ) => ClassAccessorDecoratorResult<This, Value> | void;
 
-const FROM_HOOK_PROPERTIES_KEY = Symbol(
-  'FROM_HOOK_PROPERTIES'
+const MOUNT_STATE_OBJECT_PROPERTIES_KEY = Symbol(
+  'MOUNT_STATE_OBJECT_PROPERTIES'
 );
 
-type WithFromHookPropertiesMetadata = {
-  [FROM_HOOK_PROPERTIES_KEY]?: Set<PropertyKey>;
+type WithMountStateObjectPropertiesMetadata = {
+  [MOUNT_STATE_OBJECT_PROPERTIES_KEY]?: Set<PropertyKey>;
 };
+
+type LifecyclePhase = 'mount' | 'unmount';
+
+class LifecycleMethodContext {
+  private readonly visitedInstances =
+    new Set<ReactStateObject>();
+
+  constructor(readonly phase: LifecyclePhase) {}
+
+  public hasVisited(
+    stateObject: ReactStateObject
+  ): boolean {
+    return this.visitedInstances.has(stateObject);
+  }
+
+  public recordVisit(stateObject: ReactStateObject): void {
+    this.visitedInstances.add(stateObject);
+  }
+}
+
+function getMountStateObjectProperties(
+  instance: ReactStateObject
+): Set<PropertyKey> {
+  return (
+    (instance as WithMountStateObjectPropertiesMetadata)[
+      MOUNT_STATE_OBJECT_PROPERTIES_KEY
+    ] ?? new Set<PropertyKey>()
+  );
+}
+
+function recordMountStateObjectProperty(
+  instance: object,
+  propertyKey: PropertyKey
+): void {
+  const metadataTarget =
+    instance as WithMountStateObjectPropertiesMetadata;
+  const mountStateObjectProperties =
+    metadataTarget[MOUNT_STATE_OBJECT_PROPERTIES_KEY] ??
+    new Set<PropertyKey>();
+
+  metadataTarget[MOUNT_STATE_OBJECT_PROPERTIES_KEY] =
+    mountStateObjectProperties;
+  mountStateObjectProperties.add(propertyKey);
+}
+
+export function mountStateObject<This, Value>(
+  target: ClassAccessorDecoratorTarget<This, Value>,
+  context: ClassAccessorDecoratorContext<This, Value>
+): ClassAccessorDecoratorResult<This, Value> | void;
+
+export function mountStateObject<This, Value>(
+  target: undefined,
+  context: ClassFieldDecoratorContext<This, Value>
+): void;
+
+export function mountStateObject<This, Value>(
+  target:
+    | ClassAccessorDecoratorTarget<This, Value>
+    | undefined,
+  context:
+    | ClassAccessorDecoratorContext<This, Value>
+    | ClassFieldDecoratorContext<This, Value>
+): unknown {
+  if (context.kind === 'accessor') {
+    context.addInitializer(function () {
+      recordMountStateObjectProperty(
+        this as unknown as object,
+        context.name
+      );
+    });
+
+    return undefined;
+  }
+
+  if (context.kind === 'field') {
+    return function (this: This, value: Value): Value {
+      recordMountStateObjectProperty(
+        this as object,
+        context.name
+      );
+      return value;
+    };
+  }
+
+  throw new Error(
+    '@mountStateObject can only be used on class fields and accessors.'
+  );
+}
 
 /**
  * Base class for state objects that need React lifecycle hooks,
@@ -40,9 +127,24 @@ export class ReactStateObject {
     // no-op
   }
 
-  private _innerMount(): void {
-    for (const child of this.getChildStateObjects()) {
-      child._innerMount();
+  private _innerMount(
+    context: LifecycleMethodContext
+  ): void {
+    context.recordVisit(this);
+
+    for (const [
+      key,
+      child,
+    ] of this.getMountedChildStateObjects(context.phase)) {
+      if (context.hasVisited(child)) {
+        throw new Error(
+          `Duplicate child state object detected during ${context.phase} on ${this.constructor.name}.${String(
+            key
+          )}: ${child.constructor.name} is already part of the current lifecycle pass. Child ownership must be unique.`
+        );
+      }
+
+      child._innerMount(context);
     }
 
     for (const action of this.mountActions) {
@@ -52,11 +154,26 @@ export class ReactStateObject {
     this.mount();
   }
 
-  private _innerUnmount(): void {
+  private _innerUnmount(
+    context: LifecycleMethodContext
+  ): void {
+    context.recordVisit(this);
+
     this.unmount();
 
-    for (const child of this.getChildStateObjects()) {
-      child._innerUnmount();
+    for (const [
+      key,
+      child,
+    ] of this.getMountedChildStateObjects(context.phase)) {
+      if (context.hasVisited(child)) {
+        throw new Error(
+          `Duplicate child state object detected during ${context.phase} on ${this.constructor.name}.${String(
+            key
+          )}: ${child.constructor.name} is already part of the current lifecycle pass. Child ownership must be unique.`
+        );
+      }
+
+      child._innerUnmount(context);
     }
 
     for (const action of this.unmountActions) {
@@ -85,54 +202,24 @@ export class ReactStateObject {
     this.unmountActions.add(disposeFn);
   }
 
-  private *getChildStateObjects(): Generator<ReactStateObject> {
-    const seenKeys = new Set<string>();
-    for (const key of Object.keys(this)) {
-      if (seenKeys.has(key)) {
-        continue;
+  private *getMountedChildStateObjects(
+    phase: LifecyclePhase
+  ): Generator<[PropertyKey, ReactStateObject]> {
+    for (const key of getMountStateObjectProperties(this)) {
+      const value = (this as Record<PropertyKey, unknown>)[
+        key
+      ];
+
+      if (!(value instanceof ReactStateObject)) {
+        throw new Error(
+          `Invalid @mountStateObject property ${this.constructor.name}.${String(
+            key
+          )} during ${phase}: expected a ReactStateObject instance.`
+        );
       }
-      seenKeys.add(key);
-      const value: any = (this as any)[key];
-      if (this.isChildReactStateObject(key, value)) {
-        yield value;
-      }
+
+      yield [key, value];
     }
-
-    if (isObservableObject(this)) {
-      const observableObjectAdministration:
-        | ObservableObjectAdministration
-        | undefined = (this as any)[$mobx];
-      for (const key of observableObjectAdministration?.values_.keys() ??
-        []) {
-        if (seenKeys.has(key.toString())) {
-          continue;
-        }
-        seenKeys.add(key.toString());
-        const value = (this as any)[key];
-        if (this.isChildReactStateObject(key, value)) {
-          yield value;
-        }
-      }
-    }
-  }
-
-  private isChildReactStateObject(
-    key: PropertyKey,
-    value: unknown
-  ): value is ReactStateObject {
-    if (!(value instanceof ReactStateObject)) {
-      return false;
-    }
-
-    const fromHookProperties = (
-      this as WithFromHookPropertiesMetadata
-    )[FROM_HOOK_PROPERTIES_KEY];
-
-    if (fromHookProperties?.has(key)) {
-      return false;
-    }
-
-    return true;
   }
 }
 
@@ -168,7 +255,11 @@ function dependenciesAreEqual(
     return false;
   }
 
-  for (let index = 0; index < nextDependencies.length; index += 1) {
+  for (
+    let index = 0;
+    index < nextDependencies.length;
+    index += 1
+  ) {
     if (
       !Object.is(
         previousDependencies[index],
@@ -216,28 +307,10 @@ export function fromHook<RSO extends ReactStateObject, R>(
       instance: RSO,
       value: R
     ): void => {
-      (
-        instance as unknown as Record<PropertyKey, R>
-      )[context.name] = value;
+      (instance as unknown as Record<PropertyKey, R>)[
+        context.name
+      ] = value;
     };
-
-    context.addInitializer(function (this: RSO) {
-      const instance = this;
-      const metadataTarget =
-        instance as unknown as WithFromHookPropertiesMetadata;
-
-      const fromHookProperties =
-        metadataTarget[FROM_HOOK_PROPERTIES_KEY] ??
-        new Set<PropertyKey>();
-
-      metadataTarget[FROM_HOOK_PROPERTIES_KEY] =
-        fromHookProperties;
-
-      // Hook-backed properties are populated by React render logic,
-      // not by this object's child lifecycle tree, so they must be
-      // excluded from child-state traversal.
-      fromHookProperties.add(context.name);
-    });
 
     return {
       get(this: RSO): R {
@@ -380,8 +453,9 @@ export function useMountStateObject<
 ): TStateObject {
   const stateObjectRef = useRef<TStateObject | null>(null);
   const hooksRef = useRef<Hook[]>([]);
-  const dependenciesRef =
-    useRef<DependencyList | null>(null);
+  const dependenciesRef = useRef<DependencyList | null>(
+    null
+  );
   const currentDependencies =
     dependencies ?? EMPTY_DEPENDENCIES;
 
@@ -411,10 +485,14 @@ export function useMountStateObject<
       );
     }
 
-    (stateObject as any)._innerMount();
+    (stateObject as any)._innerMount(
+      new LifecycleMethodContext('mount')
+    );
 
     return () => {
-      (stateObject as any)._innerUnmount();
+      (stateObject as any)._innerUnmount(
+        new LifecycleMethodContext('unmount')
+      );
     };
   }, currentDependencies);
 
