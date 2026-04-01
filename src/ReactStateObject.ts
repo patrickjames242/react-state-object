@@ -45,31 +45,6 @@ class LifecycleMethodContext {
   }
 }
 
-function getMountStateObjectProperties(
-  instance: ReactStateObject
-): Set<PropertyKey> {
-  return (
-    (instance as WithMountStateObjectPropertiesMetadata)[
-      MOUNT_STATE_OBJECT_PROPERTIES_KEY
-    ] ?? new Set<PropertyKey>()
-  );
-}
-
-function recordMountStateObjectProperty(
-  instance: object,
-  propertyKey: PropertyKey
-): void {
-  const metadataTarget =
-    instance as WithMountStateObjectPropertiesMetadata;
-  const mountStateObjectProperties =
-    metadataTarget[MOUNT_STATE_OBJECT_PROPERTIES_KEY] ??
-    new Set<PropertyKey>();
-
-  metadataTarget[MOUNT_STATE_OBJECT_PROPERTIES_KEY] =
-    mountStateObjectProperties;
-  mountStateObjectProperties.add(propertyKey);
-}
-
 /**
  * Marks a child {@link ReactStateObject} property as being owned by its
  * parent state object so the child's `mount()` and `unmount()` lifecycle
@@ -120,6 +95,21 @@ export function mountStateObject<This, Value>(
     | ClassAccessorDecoratorContext<This, Value>
     | ClassFieldDecoratorContext<This, Value>
 ): unknown {
+  function recordMountStateObjectProperty(
+    instance: object,
+    propertyKey: PropertyKey
+  ): void {
+    const metadataTarget =
+      instance as WithMountStateObjectPropertiesMetadata;
+    const mountStateObjectProperties =
+      metadataTarget[MOUNT_STATE_OBJECT_PROPERTIES_KEY] ??
+      new Set<PropertyKey>();
+
+    metadataTarget[MOUNT_STATE_OBJECT_PROPERTIES_KEY] =
+      mountStateObjectProperties;
+    mountStateObjectProperties.add(propertyKey);
+  }
+
   if (context.kind === 'accessor') {
     context.addInitializer(function () {
       recordMountStateObjectProperty(
@@ -360,7 +350,12 @@ export class ReactStateObject {
   private *getMountedChildStateObjects(
     phase: LifecyclePhase
   ): Generator<[PropertyKey, ReactStateObject]> {
-    for (const key of getMountStateObjectProperties(this)) {
+    const mountedStateObjectProperties =
+      (this as WithMountStateObjectPropertiesMetadata)[
+        MOUNT_STATE_OBJECT_PROPERTIES_KEY
+      ] ?? new Set<PropertyKey>();
+
+    for (const key of mountedStateObjectProperties) {
       const value = (this as Record<PropertyKey, unknown>)[
         key
       ];
@@ -725,10 +720,7 @@ export function useMountStateObject<
   TStateObject extends ReactStateObject,
   TArgs extends readonly unknown[],
 >(
-  StateObjectClass: StateObjectClass<
-    TStateObject,
-    TArgs
-  >,
+  StateObjectClass: StateObjectClass<TStateObject, TArgs>,
   ...constructorArgs: TArgs
 ): TStateObject;
 
@@ -736,10 +728,7 @@ export function useMountStateObject<
   TStateObject extends ReactStateObject,
   TArgs extends readonly unknown[],
 >(
-  StateObjectClass: StateObjectClass<
-    TStateObject,
-    TArgs
-  >,
+  StateObjectClass: StateObjectClass<TStateObject, TArgs>,
   factory: () => TStateObject,
   dependencies: DependencyList
 ): TStateObject;
@@ -748,12 +737,12 @@ export function useMountStateObject<
   TStateObject extends ReactStateObject,
   TArgs extends readonly unknown[],
 >(
-  StateObjectClass: StateObjectClass<
-    TStateObject,
-    TArgs
-  >,
+  StateObjectClass: StateObjectClass<TStateObject, TArgs>,
   ...args:
-    | [factory: () => TStateObject, dependencies: DependencyList]
+    | [
+        factory: () => TStateObject,
+        dependencies: DependencyList,
+      ]
     | readonly unknown[]
 ): TStateObject {
   const stateObjectRef = useRef<TStateObject | null>(null);
@@ -767,10 +756,7 @@ export function useMountStateObject<
     Array.isArray(args[1]);
   const factory = usesCustomFactory
     ? (args[0] as () => TStateObject)
-    : () =>
-        new StateObjectClass(
-          ...(args as TArgs)
-        );
+    : () => new StateObjectClass(...(args as TArgs));
   const currentDependencies = usesCustomFactory
     ? [StateObjectClass, ...(args[1] as DependencyList)]
     : [StateObjectClass, ...(args as TArgs)];
