@@ -387,16 +387,20 @@ export class ReactStateObject {
  */
 export type Hook = () => unknown;
 
+type HookInvoker = (instanceId: number) => void;
+
 class HookRecorder {
   private readonly _hooks: Hook[] = [];
+
+  constructor(public readonly instanceId: number) {}
 
   public get hooks(): Hook[] {
     return this._hooks;
   }
 
-  public invoke(hook: Hook): unknown {
-    this._hooks.push(hook);
-    return hook();
+  public invoke(hook: HookInvoker): unknown {
+    this._hooks.push(() => hook(this.instanceId));
+    return hook(this.instanceId);
   }
 }
 
@@ -452,7 +456,7 @@ function dependenciesAreEqual(
  * ```
  */
 export function invokeReactStateObjectHook(
-  hook: Hook
+  hook: HookInvoker
 ): unknown {
   const hookRecorder =
     hookRecorderStack[hookRecorderStack.length - 1];
@@ -557,41 +561,65 @@ export function fromHook<RSO extends ReactStateObject, R>(
         const instance = this;
 
         let initialValue = value;
-        invokeReactStateObjectHook(() => {
-          // Run the hook during state object construction so it is
-          // recorded and replayed by useMountStateObject on rerenders.
-          const hookResult = hook.call(instance, instance);
-          const previousValueRef = useRef<R>(hookResult);
-          const hasInitializedRef = useRef(false);
+        invokeReactStateObjectHook(
+          (stateObjectInstanceId) => {
+            // Run the hook during state object construction so it is
+            // recorded and replayed by useMountStateObject on rerenders.
+            const hookResult = hook.call(
+              instance,
+              instance
+            );
+            const previousValueRef = useRef<R>(hookResult);
+            const hasInitializedRef = useRef([
+              stateObjectInstanceId,
+              false,
+            ]);
 
-          if (!hasInitializedRef.current) {
-            // Returning the first hook result from `init` lets the
-            // accessor's private backing slot initialize safely before
-            // any later setter writes occur. We also stage that value
-            // separately so the getter can repair inner decorators
-            // that may have already committed the old initializer.
-            initialValue = hookResult;
-            pendingInitialValues.set(instance, hookResult);
-            previousValueRef.current = hookResult;
-            hasInitializedRef.current = true;
-          }
-
-          useEffect(() => {
-            if (previousValueRef.current === hookResult) {
-              return;
+            // checks to see if we've initialized the fromHook value for this current instance,
+            // when a component is unmounted and remounted by the useMountStateObject hook,
+            // a new instance will be created, and the fromHook variables will need to be initialized
+            // immediately instead of waiting for the useEffect below to run, which happens after the first render
+            if (
+              !(
+                stateObjectInstanceId ===
+                  hasInitializedRef.current[0] &&
+                hasInitializedRef.current[1]
+              )
+            ) {
+              // Returning the first hook result from `init` lets the
+              // accessor's private backing slot initialize safely before
+              // any later setter writes occur. We also stage that value
+              // separately so the getter can repair inner decorators
+              // that may have already committed the old initializer.
+              initialValue = hookResult;
+              pendingInitialValues.set(
+                instance,
+                hookResult
+              );
+              previousValueRef.current = hookResult;
+              hasInitializedRef.current = [
+                stateObjectInstanceId,
+                true,
+              ];
             }
 
-            // Hook updates happen after render, so push them back
-            // through the decorated property inside an action. This
-            // keeps MobX notifications correct without bypassing any
-            // accessor decorators layered under @fromHook.
-            action('@fromHook value update', () => {
-              assignAccessorValue(instance, hookResult);
-            })();
+            useEffect(() => {
+              if (previousValueRef.current === hookResult) {
+                return;
+              }
 
-            previousValueRef.current = hookResult;
-          });
-        });
+              // Hook updates happen after render, so push them back
+              // through the decorated property inside an action. This
+              // keeps MobX notifications correct without bypassing any
+              // accessor decorators layered under @fromHook.
+              action('@fromHook value update', () => {
+                assignAccessorValue(instance, hookResult);
+              })();
+
+              previousValueRef.current = hookResult;
+            });
+          }
+        );
 
         return initialValue;
       },
@@ -671,9 +699,10 @@ export function injectInstance<
 }
 
 function recordHooks<Result>(
+  instanceId: number,
   withinFunction: () => Result
 ): Hook[] {
-  const hookRecorder = new HookRecorder();
+  const hookRecorder = new HookRecorder(instanceId);
   hookRecorderStack.push(hookRecorder);
 
   try {
@@ -745,7 +774,10 @@ export function useMountStateObject<
       ]
     | readonly unknown[]
 ): TStateObject {
-  const stateObjectRef = useRef<TStateObject | null>(null);
+  const stateObjectRef = useRef<{
+    object: TStateObject;
+    id: number;
+  } | null>(null);
   const hooksRef = useRef<Hook[]>([]);
   const dependenciesRef = useRef<DependencyList | null>(
     null
@@ -768,8 +800,15 @@ export function useMountStateObject<
       currentDependencies
     )
   ) {
-    hooksRef.current = recordHooks(() => {
-      stateObjectRef.current = factory();
+    const newId =
+      stateObjectRef.current == null
+        ? 0
+        : stateObjectRef.current.id + 1;
+    hooksRef.current = recordHooks(newId, () => {
+      stateObjectRef.current = {
+        object: factory(),
+        id: newId,
+      };
     });
     dependenciesRef.current = currentDependencies;
   } else {
@@ -778,25 +817,26 @@ export function useMountStateObject<
     }
   }
 
-  const stateObject = stateObjectRef.current;
+  const stateObjectInstance =
+    stateObjectRef.current?.object;
 
   useEffect(() => {
-    if (!stateObject) {
+    if (!stateObjectInstance) {
       throw new Error(
         'useMountStateObject failed to initialize a state object.'
       );
     }
 
-    (stateObject as any)._innerMount(
+    (stateObjectInstance as any)._innerMount(
       new LifecycleMethodContext('mount')
     );
 
     return () => {
-      (stateObject as any)._innerUnmount(
+      (stateObjectInstance as any)._innerUnmount(
         new LifecycleMethodContext('unmount')
       );
     };
   }, currentDependencies);
 
-  return stateObject as TStateObject;
+  return stateObjectInstance as TStateObject;
 }

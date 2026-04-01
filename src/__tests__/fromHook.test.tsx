@@ -188,6 +188,95 @@ describe('fromHook', () => {
     expect(observedStates[0]).not.toBe(observedStates[1]);
   });
 
+  it('makes fromHook values available after super() when a new state object instance is created', () => {
+    const constructorValues: string[] = [];
+
+    function useHookValue(seed: string): string {
+      return React.useMemo(
+        () => `${seed}-value`,
+        [seed]
+      );
+    }
+
+    class HookState extends ReactStateObject {
+      @fromHook(function (this: HookState) {
+        return useHookValue(this.seed);
+      })
+      accessor hookValue!: string;
+
+      constructor(readonly seed: string) {
+        super();
+        constructorValues.push(this.hookValue);
+      }
+    }
+
+    function CaptureStateHarness({
+      seed,
+    }: {
+      seed: string;
+    }): JSX.Element | null {
+      useMountStateObject(HookState, seed);
+      return null;
+    }
+
+    const { rerender } = render(
+      <CaptureStateHarness seed="first" />
+    );
+
+    rerender(<CaptureStateHarness seed="second" />);
+
+    expect(constructorValues).toEqual([
+      'first-value',
+      'second-value',
+    ]);
+  });
+
+  it('makes fromHook values available inside mount() when a new state object instance is created', () => {
+    const mountedValues: string[] = [];
+
+    function useHookValue(seed: string): string {
+      return React.useMemo(
+        () => `${seed}-value`,
+        [seed]
+      );
+    }
+
+    class HookState extends ReactStateObject {
+      @fromHook(function (this: HookState) {
+        return useHookValue(this.seed);
+      })
+      accessor hookValue!: string;
+
+      constructor(readonly seed: string) {
+        super();
+      }
+
+      protected override mount(): void {
+        mountedValues.push(this.hookValue);
+      }
+    }
+
+    function CaptureStateHarness({
+      seed,
+    }: {
+      seed: string;
+    }): JSX.Element | null {
+      useMountStateObject(HookState, seed);
+      return null;
+    }
+
+    const { rerender } = render(
+      <CaptureStateHarness seed="first" />
+    );
+
+    rerender(<CaptureStateHarness seed="second" />);
+
+    expect(mountedValues).toEqual([
+      'first-value',
+      'second-value',
+    ]);
+  });
+
   it('sets @observable fromHook accessors and keeps the assigned value observable', () => {
     let setHookValue:
       | React.Dispatch<
